@@ -1,0 +1,982 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, minimum-scale=1.0, user-scalable=no">
+  <title>ProbaLentes — Simulador Virtual de Anteojos</title>
+
+  <!-- Jeeliz VTO Widget — open source Apache 2.0 -->
+  <script src="https://cdn.jsdelivr.net/gh/jeeliz/jeelizGlassesVTOWidget@master/dist/JeelizVTOWidget.js"></script>
+
+  <!-- Google Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,400;0,600;1,400&family=Jost:wght@300;400;500;600&display=swap" rel="stylesheet">
+
+  <style>
+    /* ── Reset ─────────────────────────────────────────── */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg:          #0a0a0a;
+      --surface:     #141414;
+      --surface2:    #1e1e1e;
+      --border:      #2a2a2a;
+      --gold:        #c9a84c;
+      --gold-light:  #e8c96a;
+      --cream:       #f0ebe1;
+      --muted:       #888;
+      --danger:      #e05555;
+      --header-h:    64px;
+      --panel-w:     300px;
+      --bar-h:       110px;
+    }
+
+    html, body {
+      height: 100%;
+      overflow: hidden;
+      background: var(--bg);
+      color: var(--cream);
+      font-family: 'Jost', sans-serif;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    /* ── Layout ─────────────────────────────────────────── */
+    .app {
+      display: grid;
+      grid-template-rows: var(--header-h) 1fr;
+      grid-template-columns: 1fr var(--panel-w);
+      grid-template-areas:
+        "header header"
+        "camera panel";
+      height: 100vh;
+      height: 100dvh;
+    }
+
+    /* ── Header ─────────────────────────────────────────── */
+    .header {
+      grid-area: header;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 24px;
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      position: relative;
+      z-index: 10;
+    }
+
+    .logo {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .logo-icon {
+      width: 36px;
+      height: 36px;
+    }
+
+    .logo-text {
+      font-family: 'Cormorant Garamond', serif;
+      font-size: 24px;
+      font-weight: 600;
+      letter-spacing: 0.04em;
+      color: var(--cream);
+    }
+
+    .logo-text span {
+      color: var(--gold);
+    }
+
+    .badge-live {
+      display: flex;
+      align-items: center;
+      gap: 7px;
+      font-size: 12px;
+      font-weight: 500;
+      color: var(--muted);
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+
+    .badge-live .dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: #555;
+      transition: background 0.4s;
+    }
+
+    .badge-live.active .dot {
+      background: #4ade80;
+      box-shadow: 0 0 0 3px rgba(74, 222, 128, 0.2);
+      animation: pulse 2s infinite;
+    }
+
+    @keyframes pulse {
+      0%, 100% { box-shadow: 0 0 0 3px rgba(74, 222, 128, 0.2); }
+      50%       { box-shadow: 0 0 0 6px rgba(74, 222, 128, 0.0); }
+    }
+
+    .header-actions {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .btn-adjust {
+      display: none; /* shown by Jeeliz when needed */
+      align-items: center;
+      gap: 6px;
+      padding: 8px 16px;
+      background: transparent;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      color: var(--cream);
+      font-family: 'Jost', sans-serif;
+      font-size: 13px;
+      font-weight: 500;
+      cursor: pointer;
+      transition: border-color 0.2s, background 0.2s;
+      letter-spacing: 0.04em;
+    }
+
+    .btn-adjust:hover {
+      border-color: var(--gold);
+      background: rgba(201, 168, 76, 0.08);
+    }
+
+    /* ── Camera area ─────────────────────────────────────── */
+    .camera-area {
+      grid-area: camera;
+      position: relative;
+      background: #050505;
+      overflow: hidden;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    /* Jeeliz required: placeholder div */
+    #JeelizVTOWidget {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+    }
+
+    /* Jeeliz required: canvas inside placeholder */
+    #JeelizVTOWidgetCanvas {
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      margin: auto;
+    }
+
+    /* Start screen (visible before camera starts) */
+    .start-screen {
+      position: absolute;
+      inset: 0;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 20px;
+      z-index: 5;
+      background: radial-gradient(ellipse at center, #1a1a1a 0%, #0a0a0a 70%);
+      transition: opacity 0.6s;
+    }
+
+    .start-screen.hidden {
+      opacity: 0;
+      pointer-events: none;
+    }
+
+    .start-icon {
+      width: 80px;
+      height: 80px;
+      border-radius: 50%;
+      background: linear-gradient(135deg, var(--surface2) 0%, #2a2a2a 100%);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      border: 1px solid var(--border);
+    }
+
+    .start-title {
+      font-family: 'Cormorant Garamond', serif;
+      font-size: 28px;
+      font-weight: 600;
+      color: var(--cream);
+      text-align: center;
+    }
+
+    .start-sub {
+      font-size: 14px;
+      color: var(--muted);
+      text-align: center;
+      max-width: 280px;
+      line-height: 1.6;
+    }
+
+    .btn-start {
+      padding: 14px 36px;
+      background: linear-gradient(135deg, var(--gold) 0%, #a8862e 100%);
+      border: none;
+      border-radius: 8px;
+      color: #0a0a0a;
+      font-family: 'Jost', sans-serif;
+      font-size: 15px;
+      font-weight: 600;
+      cursor: pointer;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      transition: transform 0.15s, box-shadow 0.15s;
+    }
+
+    .btn-start:hover {
+      transform: translateY(-1px);
+      box-shadow: 0 8px 24px rgba(201, 168, 76, 0.3);
+    }
+
+    .btn-start:active {
+      transform: translateY(0);
+    }
+
+    /* Adjust notice overlay (shown by Jeeliz during adjust mode) */
+    #JeelizVTOWidgetAdjustNotice {
+      position: absolute;
+      bottom: 0;
+      left: 0;
+      right: 0;
+      background: rgba(0,0,0,0.75);
+      backdrop-filter: blur(8px);
+      padding: 20px 24px;
+      z-index: 3;
+      display: none;
+      font-size: 14px;
+      color: var(--cream);
+      text-align: center;
+    }
+
+    /* Loading overlay (managed by Jeeliz) */
+    #JeelizVTOWidgetLoading {
+      position: fixed;
+      inset: 0;
+      z-index: 100;
+      display: none; /* shown programmatically when startSimulator() is called */
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      background: rgba(10,10,10,0.88);
+      backdrop-filter: blur(12px);
+      gap: 20px;
+    }
+
+    .loading-ring {
+      width: 56px;
+      height: 56px;
+      border: 3px solid var(--border);
+      border-top-color: var(--gold);
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+    }
+
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+
+    .loading-text {
+      font-size: 14px;
+      color: var(--muted);
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+
+    /* Currently wearing label */
+    .wearing-badge {
+      position: absolute;
+      bottom: 20px;
+      left: 50%;
+      transform: translateX(-50%);
+      background: rgba(14, 14, 14, 0.7);
+      backdrop-filter: blur(12px);
+      border: 1px solid var(--border);
+      border-radius: 100px;
+      padding: 8px 20px;
+      font-size: 13px;
+      color: var(--cream);
+      z-index: 4;
+      white-space: nowrap;
+      display: none;
+    }
+
+    .wearing-badge .wearing-name {
+      color: var(--gold-light);
+      font-weight: 500;
+    }
+
+    /* ── Side panel ──────────────────────────────────────── */
+    .side-panel {
+      grid-area: panel;
+      background: var(--surface);
+      border-left: 1px solid var(--border);
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+
+    .panel-header {
+      padding: 20px 20px 16px;
+      border-bottom: 1px solid var(--border);
+      flex-shrink: 0;
+    }
+
+    .panel-title {
+      font-family: 'Cormorant Garamond', serif;
+      font-size: 18px;
+      font-weight: 600;
+      color: var(--cream);
+      letter-spacing: 0.02em;
+    }
+
+    .panel-sub {
+      font-size: 12px;
+      color: var(--muted);
+      margin-top: 3px;
+    }
+
+    .glasses-list {
+      flex: 1;
+      overflow-y: auto;
+      padding: 12px;
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+      align-content: start;
+    }
+
+    .glasses-list::-webkit-scrollbar {
+      width: 4px;
+    }
+
+    .glasses-list::-webkit-scrollbar-track {
+      background: transparent;
+    }
+
+    .glasses-list::-webkit-scrollbar-thumb {
+      background: var(--border);
+      border-radius: 2px;
+    }
+
+    /* Glasses card */
+    .glasses-card {
+      background: var(--surface2);
+      border: 1.5px solid var(--border);
+      border-radius: 10px;
+      padding: 12px 10px;
+      cursor: pointer;
+      transition: border-color 0.2s, background 0.2s, transform 0.15s;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 8px;
+      text-align: center;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .glasses-card::before {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background: linear-gradient(135deg, transparent 60%, rgba(201, 168, 76, 0.04) 100%);
+      opacity: 0;
+      transition: opacity 0.2s;
+    }
+
+    .glasses-card:hover {
+      border-color: #3a3a3a;
+      background: #232323;
+      transform: translateY(-1px);
+    }
+
+    .glasses-card:hover::before {
+      opacity: 1;
+    }
+
+    .glasses-card.active {
+      border-color: var(--gold);
+      background: rgba(201, 168, 76, 0.06);
+    }
+
+    .glasses-card.active::before {
+      opacity: 1;
+    }
+
+    .glasses-card.loading-model {
+      pointer-events: none;
+      opacity: 0.7;
+    }
+
+    /* Glasses SVG preview */
+    .glasses-preview {
+      width: 80px;
+      height: 36px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .card-name {
+      font-size: 11px;
+      font-weight: 500;
+      color: var(--cream);
+      line-height: 1.3;
+    }
+
+    .card-style {
+      font-size: 10px;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+    }
+
+    .active-dot {
+      position: absolute;
+      top: 8px;
+      right: 8px;
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      background: var(--gold);
+      opacity: 0;
+      transition: opacity 0.2s;
+    }
+
+    .glasses-card.active .active-dot {
+      opacity: 1;
+    }
+
+    /* Panel footer */
+    .panel-footer {
+      padding: 16px 20px;
+      border-top: 1px solid var(--border);
+      flex-shrink: 0;
+    }
+
+    .footer-note {
+      font-size: 11px;
+      color: var(--muted);
+      line-height: 1.5;
+      text-align: center;
+    }
+
+    .footer-note a {
+      color: var(--gold);
+      text-decoration: none;
+    }
+
+    /* Error state */
+    .error-overlay {
+      position: absolute;
+      inset: 0;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 16px;
+      z-index: 6;
+      background: rgba(10,10,10,0.9);
+      display: none;
+    }
+
+    .error-overlay.visible {
+      display: flex;
+    }
+
+    .error-icon {
+      font-size: 48px;
+    }
+
+    .error-title {
+      font-family: 'Cormorant Garamond', serif;
+      font-size: 22px;
+      color: var(--cream);
+    }
+
+    .error-msg {
+      font-size: 13px;
+      color: var(--muted);
+      text-align: center;
+      max-width: 280px;
+      line-height: 1.6;
+    }
+
+    .btn-retry {
+      padding: 10px 28px;
+      background: transparent;
+      border: 1px solid var(--gold);
+      border-radius: 6px;
+      color: var(--gold);
+      font-family: 'Jost', sans-serif;
+      font-size: 13px;
+      cursor: pointer;
+      letter-spacing: 0.06em;
+      transition: background 0.2s;
+    }
+
+    .btn-retry:hover {
+      background: rgba(201,168,76,0.1);
+    }
+
+    /* ── Mobile layout (≤ 768px) ─────────────────────────── */
+    @media (max-width: 768px) {
+      :root {
+        --panel-w: 0px;
+        --bar-h: 120px;
+      }
+
+      .app {
+        grid-template-rows: var(--header-h) 1fr var(--bar-h);
+        grid-template-columns: 1fr;
+        grid-template-areas:
+          "header"
+          "camera"
+          "panel";
+      }
+
+      .side-panel {
+        border-left: none;
+        border-top: 1px solid var(--border);
+        flex-direction: column;
+      }
+
+      .panel-header {
+        display: none;
+      }
+
+      .glasses-list {
+        display: flex;
+        flex-direction: row;
+        overflow-x: auto;
+        overflow-y: hidden;
+        padding: 10px 12px;
+        gap: 10px;
+      }
+
+      .glasses-card {
+        flex-shrink: 0;
+        width: 90px;
+        padding: 10px 8px;
+      }
+
+      .glasses-preview {
+        width: 70px;
+        height: 30px;
+      }
+
+      .panel-footer {
+        display: none;
+      }
+
+      .header-actions .btn-adjust {
+        font-size: 12px;
+        padding: 6px 12px;
+      }
+    }
+
+    /* ── Transition animations ───────────────────────────── */
+    @keyframes fadeInUp {
+      from { opacity: 0; transform: translateY(12px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+
+    .glasses-card {
+      animation: fadeInUp 0.3s ease both;
+    }
+  </style>
+</head>
+<body>
+
+<div class="app">
+
+  <!-- ── Header ───────────────────────────────────────────── -->
+  <header class="header">
+    <div class="logo">
+      <svg class="logo-icon" viewBox="0 0 36 36" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <rect width="36" height="36" rx="8" fill="#1e1e1e"/>
+        <path d="M5 19c0-3.3 2.7-6 6-6h4.5c.8 0 1.5.4 1.5 1v.5c0 .3.2.5.5.5h1c.3 0 .5-.2.5-.5V14c0-.6.7-1 1.5-1H25c3.3 0 6 2.7 6 6s-2.7 6-6 6h-3c-2.8 0-5-2.2-5-5v-.5c0-.3-.2-.5-.5-.5h-1c-.3 0-.5.2-.5.5V25c0 2.8-2.2 5-5 5h-3c-3.3 0-6-2.7-6-6z" stroke="#c9a84c" stroke-width="1.5" fill="none"/>
+        <circle cx="11" cy="19" r="2.5" fill="#c9a84c" opacity="0.3"/>
+        <circle cx="25" cy="19" r="2.5" fill="#c9a84c" opacity="0.3"/>
+      </svg>
+      <span class="logo-text">Proba<span>Lentes</span></span>
+    </div>
+
+    <div class="header-actions">
+      <div class="badge-live" id="badgeLive">
+        <div class="dot"></div>
+        <span id="liveLabel">Cámara inactiva</span>
+      </div>
+    </div>
+  </header>
+
+  <!-- ── Camera ───────────────────────────────────────────── -->
+  <main class="camera-area">
+
+    <!-- Start screen -->
+    <div class="start-screen" id="startScreen">
+      <div class="start-icon">
+        <svg width="40" height="40" viewBox="0 0 40 40" fill="none">
+          <path d="M20 12c-4.4 0-8 3.6-8 8s3.6 8 8 8 8-3.6 8-8-3.6-8-8-8zm0 13c-2.8 0-5-2.2-5-5s2.2-5 5-5 5 2.2 5 5-2.2 5-5 5z" fill="#c9a84c" opacity="0.6"/>
+          <path d="M34 10h-3.2l-1.6-3.2c-.4-.8-1.2-1.3-2-1.3H12.8c-.8 0-1.6.5-2 1.3L9.2 10H6C3.8 10 2 11.8 2 14v18c0 2.2 1.8 4 4 4h28c2.2 0 4-1.8 4-4V14c0-2.2-1.8-4-4-4z" stroke="#c9a84c" stroke-width="1.5" fill="none"/>
+        </svg>
+      </div>
+      <h2 class="start-title">Probador Virtual</h2>
+      <p class="start-sub">Activá la cámara para probar anteojos en tiempo real con tecnología AR</p>
+      <button class="btn-start" id="btnStart">Activar Cámara</button>
+    </div>
+
+    <!-- Error overlay -->
+    <div class="error-overlay" id="errorOverlay">
+      <div class="error-icon">📷</div>
+      <h3 class="error-title" id="errorTitle">Sin acceso a la cámara</h3>
+      <p class="error-msg" id="errorMsg">Necesitamos acceso a tu cámara para mostrarte los anteojos. Revisá los permisos del navegador.</p>
+      <button class="btn-retry" onclick="retryInit()">Reintentar</button>
+    </div>
+
+    <!-- Jeeliz placeholder — IDs son requeridos por la librería -->
+    <div id="JeelizVTOWidget">
+      <canvas id="JeelizVTOWidgetCanvas"></canvas>
+
+      <div id="JeelizVTOWidgetAdjustNotice">
+        Mové el modelo hasta que coincida con tus anteojos reales. Tocá fuera para confirmar.
+        <button id="JeelizVTOWidgetAdjustExit">✕</button>
+      </div>
+    </div>
+
+    <!-- Loading overlay — Jeeliz shows/hides this -->
+    <div id="JeelizVTOWidgetLoading">
+      <div class="loading-ring"></div>
+      <span class="loading-text">Cargando simulador...</span>
+    </div>
+
+    <!-- Currently wearing badge -->
+    <div class="wearing-badge" id="wearingBadge">
+      Probando: <span class="wearing-name" id="wearingName">—</span>
+    </div>
+
+  </main>
+
+  <!-- ── Side panel ────────────────────────────────────────── -->
+  <aside class="side-panel">
+    <div class="panel-header">
+      <div class="panel-title">Modelos</div>
+      <div class="panel-sub">Tocá para probar cualquier montura</div>
+    </div>
+
+    <div class="glasses-list" id="glassesList">
+      <!-- Cards generated by JS -->
+    </div>
+
+    <div class="panel-footer">
+      <p class="footer-note">
+        Modelos 3D provistos por <a href="https://jeeliz.com" target="_blank">Jeeliz</a> —
+        open source Apache 2.0.<br>
+        Próximamente: tus propias monturas.
+      </p>
+    </div>
+  </aside>
+
+</div>
+
+<script>
+  // ── Catálogo de anteojos ────────────────────────────────────
+  // SKUs de Jeeliz GlassesDB (gratuitos, sin costo de licencia)
+  const CATALOG = [
+    {
+      sku:   'rayban_aviator_or_vertFlash',
+      name:  'Aviador Dorado',
+      style: 'Aviador',
+      color: '#C8A96E',
+      shape: 'aviator',
+    },
+    {
+      sku:   'rayban_wayfarer_havane_marron',
+      name:  'Wayfarer Carey',
+      style: 'Cuadrado',
+      color: '#8B5E3C',
+      shape: 'wayfarer',
+    },
+    {
+      sku:   'rayban_clubmaster_noir_marronDegrade',
+      name:  'Clubmaster Negro',
+      style: 'Browline',
+      color: '#2a2a2a',
+      shape: 'clubmaster',
+    },
+    {
+      sku:   'rayban_round_or_vert',
+      name:  'Round Dorado',
+      style: 'Redondo',
+      color: '#C8A96E',
+      shape: 'round',
+    },
+    {
+      sku:   'rayban_erika_marronArgent_marronVioletDegrade',
+      name:  'Erika Violeta',
+      style: 'Redondo',
+      color: '#7C5C8A',
+      shape: 'round',
+    },
+    {
+      sku:   'rayban_justin_noir_bleuMirroir',
+      name:  'Justin Azul',
+      style: 'Cuadrado',
+      color: '#2563EB',
+      shape: 'wayfarer',
+    },
+    {
+      sku:   'rayban_clubround_noir_cuivre_flash',
+      name:  'Clubround Cobre',
+      style: 'Browline',
+      color: '#B87333',
+      shape: 'clubmaster',
+    },
+    {
+      sku:   'rayban_new_wayfarer_havane_marron_clair_degrade',
+      name:  'New Wayfarer',
+      style: 'Cuadrado',
+      color: '#A0724A',
+      shape: 'wayfarer',
+    },
+    {
+      sku:   'rayban_boyfriend_noir_marron_degrade',
+      name:  'Boyfriend Negro',
+      style: 'Mariposa',
+      color: '#1a1a1a',
+      shape: 'square',
+    },
+    {
+      sku:   'rayban_andy_bleu_bleu_mirroir',
+      name:  'Andy Azul',
+      style: 'Cuadrado',
+      color: '#1e40af',
+      shape: 'square',
+    },
+    {
+      sku:   'rayban_round_doubleBridge_argent_gradient_flash',
+      name:  'Double Bridge',
+      style: 'Redondo',
+      color: '#9ca3af',
+      shape: 'round',
+    },
+    {
+      sku:   'rayban_predator_noir_gris_mirroir',
+      name:  'Predator Gris',
+      style: 'Deportivo',
+      color: '#4b5563',
+      shape: 'square',
+    },
+  ];
+
+  // ── SVG previews para cada forma ───────────────────────────
+  function getGlassesSVG(shape, color) {
+    const stroke = color;
+    const fill = color + '22'; // 13% opacity
+
+    const shapes = {
+      aviator: `
+        <svg width="80" height="36" viewBox="0 0 80 36" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <path d="M4 10 L11 8 L14 8" stroke="${stroke}" stroke-width="1.8" stroke-linecap="round"/>
+          <path d="M66 8 L69 8 L76 10" stroke="${stroke}" stroke-width="1.8" stroke-linecap="round"/>
+          <path d="M38 16 L42 16" stroke="${stroke}" stroke-width="1.8" stroke-linecap="round"/>
+          <ellipse cx="22" cy="21" rx="13" ry="10" stroke="${stroke}" stroke-width="1.8" fill="${fill}"/>
+          <ellipse cx="58" cy="21" rx="13" ry="10" stroke="${stroke}" stroke-width="1.8" fill="${fill}"/>
+        </svg>`,
+
+      wayfarer: `
+        <svg width="80" height="36" viewBox="0 0 80 36" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <path d="M3 12 L10 9" stroke="${stroke}" stroke-width="1.8" stroke-linecap="round"/>
+          <path d="M70 9 L77 12" stroke="${stroke}" stroke-width="1.8" stroke-linecap="round"/>
+          <rect x="8" y="9" width="26" height="19" rx="4" stroke="${stroke}" stroke-width="1.8" fill="${fill}"/>
+          <rect x="46" y="9" width="26" height="19" rx="4" stroke="${stroke}" stroke-width="1.8" fill="${fill}"/>
+          <path d="M34 17 L46 17" stroke="${stroke}" stroke-width="1.8" stroke-linecap="round"/>
+        </svg>`,
+
+      round: `
+        <svg width="80" height="36" viewBox="0 0 80 36" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <path d="M3 12 L10 10" stroke="${stroke}" stroke-width="1.8" stroke-linecap="round"/>
+          <path d="M70 10 L77 12" stroke="${stroke}" stroke-width="1.8" stroke-linecap="round"/>
+          <circle cx="22" cy="20" r="11" stroke="${stroke}" stroke-width="1.8" fill="${fill}"/>
+          <circle cx="58" cy="20" r="11" stroke="${stroke}" stroke-width="1.8" fill="${fill}"/>
+          <path d="M33 18 L47 18" stroke="${stroke}" stroke-width="1.8" stroke-linecap="round"/>
+        </svg>`,
+
+      clubmaster: `
+        <svg width="80" height="36" viewBox="0 0 80 36" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <path d="M3 13 L10 10" stroke="${stroke}" stroke-width="1.8" stroke-linecap="round"/>
+          <path d="M70 10 L77 13" stroke="${stroke}" stroke-width="1.8" stroke-linecap="round"/>
+          <path d="M9 10 Q22 8 35 10" stroke="${stroke}" stroke-width="3" stroke-linecap="round" fill="none"/>
+          <path d="M45 10 Q58 8 71 10" stroke="${stroke}" stroke-width="3" stroke-linecap="round" fill="none"/>
+          <rect x="9" y="10" width="26" height="17" rx="3" stroke="${stroke}" stroke-width="1.4" fill="${fill}"/>
+          <rect x="45" y="10" width="26" height="17" rx="3" stroke="${stroke}" stroke-width="1.4" fill="${fill}"/>
+          <path d="M35 17 L45 17" stroke="${stroke}" stroke-width="1.8" stroke-linecap="round"/>
+        </svg>`,
+
+      square: `
+        <svg width="80" height="36" viewBox="0 0 80 36" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <path d="M3 13 L9 11" stroke="${stroke}" stroke-width="1.8" stroke-linecap="round"/>
+          <path d="M71 11 L77 13" stroke="${stroke}" stroke-width="1.8" stroke-linecap="round"/>
+          <rect x="9" y="11" width="28" height="17" rx="2" stroke="${stroke}" stroke-width="1.8" fill="${fill}"/>
+          <rect x="43" y="11" width="28" height="17" rx="2" stroke="${stroke}" stroke-width="1.8" fill="${fill}"/>
+          <path d="M37 18 L43 18" stroke="${stroke}" stroke-width="1.8" stroke-linecap="round"/>
+        </svg>`,
+    };
+
+    return shapes[shape] || shapes.round;
+  }
+
+  // ── Render catálogo ────────────────────────────────────────
+  function renderCatalog() {
+    const list = document.getElementById('glassesList');
+    list.innerHTML = '';
+    CATALOG.forEach((g, i) => {
+      const card = document.createElement('div');
+      card.className = 'glasses-card';
+      card.dataset.sku = g.sku;
+      card.style.animationDelay = `${i * 40}ms`;
+      card.innerHTML = `
+        <div class="active-dot"></div>
+        <div class="glasses-preview">${getGlassesSVG(g.shape, g.color)}</div>
+        <div class="card-name">${g.name}</div>
+        <div class="card-style">${g.style}</div>
+      `;
+      card.addEventListener('click', () => selectGlasses(g, card));
+      list.appendChild(card);
+    });
+  }
+
+  // ── Estado ──────────────────────────────────────────────────
+  let isReady = false;
+  let currentSku = null;
+  let currentCard = null;
+
+  // ── Inicializar Jeeliz ─────────────────────────────────────
+  function startSimulator() {
+    document.getElementById('startScreen').classList.add('hidden');
+    document.getElementById('JeelizVTOWidgetLoading').style.display = 'flex';
+
+    JEELIZVTOWIDGET.start({
+      isShadow: true,
+      sku: CATALOG[0].sku,
+      searchImageMask: 'https://appstatic.jeeliz.com/jeewidget/images/target512.jpg',
+      searchImageColor: 0x222222,
+
+      callbackReady: function() {
+        isReady = true;
+        console.log('[ProbaLentes] Simulador listo');
+
+        // Mark first card as active
+        const firstCard = document.querySelector('.glasses-card');
+        if (firstCard) setActiveCard(firstCard);
+        currentSku = CATALOG[0].sku;
+
+        showWearingBadge(CATALOG[0].name);
+        updateLiveBadge(true);
+      },
+
+      onError: function(errorLabel) {
+        console.error('[ProbaLentes] Error:', errorLabel);
+        document.getElementById('JeelizVTOWidgetLoading').style.display = 'none';
+
+        const messages = {
+          WEBCAM_UNAVAILABLE:    ['Sin acceso a la cámara', 'Necesitamos acceso a tu cámara. Revisá los permisos en tu navegador y recargá la página.'],
+          INVALID_SKU:           ['Modelo no disponible', 'El modelo de anteojos seleccionado no está disponible.'],
+          PLACEHOLDER_NULL_WIDTH: ['Error de tamaño', 'Redimensioná la ventana e intentá de nuevo.'],
+          FATAL:                 ['Error inesperado', 'Ocurrió un error al iniciar el simulador. Intentá recargar la página.'],
+        };
+
+        const [title, msg] = messages[errorLabel] || messages.FATAL;
+        document.getElementById('errorTitle').textContent = title;
+        document.getElementById('errorMsg').textContent = msg;
+        document.getElementById('errorOverlay').classList.add('visible');
+        document.getElementById('startScreen').classList.remove('hidden');
+      }
+    });
+  }
+
+  function retryInit() {
+    document.getElementById('errorOverlay').classList.remove('visible');
+    document.getElementById('startScreen').classList.remove('hidden');
+  }
+
+  // ── Cambiar modelo ─────────────────────────────────────────
+  function selectGlasses(glasses, card) {
+    if (!isReady) return;
+    if (glasses.sku === currentSku) return;
+
+    // Visual feedback
+    if (currentCard) currentCard.classList.remove('active');
+    card.classList.add('loading-model');
+
+    JEELIZVTOWIDGET.load(glasses.sku);
+
+    // Assume load succeeded after brief delay
+    setTimeout(() => {
+      card.classList.remove('loading-model');
+      setActiveCard(card);
+      currentSku = glasses.sku;
+      showWearingBadge(glasses.name);
+    }, 1200);
+  }
+
+  function setActiveCard(card) {
+    if (currentCard) currentCard.classList.remove('active');
+    card.classList.add('active');
+    currentCard = card;
+  }
+
+  // ── UI helpers ─────────────────────────────────────────────
+  function showWearingBadge(name) {
+    const badge = document.getElementById('wearingBadge');
+    badge.style.display = 'block';
+    document.getElementById('wearingName').textContent = name;
+  }
+
+  function updateLiveBadge(active) {
+    const badge = document.getElementById('badgeLive');
+    const label = document.getElementById('liveLabel');
+    if (active) {
+      badge.classList.add('active');
+      label.textContent = 'Cámara activa';
+    } else {
+      badge.classList.remove('active');
+      label.textContent = 'Cámara inactiva';
+    }
+  }
+
+  // ── Ajustar: el botón #JeelizVTOWidgetAdjust es gestionado
+  //    por la librería internamente. Si quisiéramos exponer el
+  //    modo ajuste manualmente, llamaríamos:
+  //    JEELIZVTOWIDGET.switch_glassesFitting(true)
+  // ────────────────────────────────────────────────────────────
+
+  // ── Keyboard shortcut: A = adjust, R = reset ───────────────
+  window.addEventListener('keydown', (e) => {
+    if (!isReady) return;
+    if (e.key === 'a' || e.key === 'A') {
+      JEELIZVTOWIDGET.switch_glassesFitting && JEELIZVTOWIDGET.switch_glassesFitting(true);
+    }
+  });
+
+  // ── Init ───────────────────────────────────────────────────
+  document.getElementById('btnStart').addEventListener('click', startSimulator);
+
+  renderCatalog();
+</script>
+</body>
+</html>
