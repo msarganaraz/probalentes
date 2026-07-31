@@ -1,0 +1,694 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>ProbaLentes v2 — Prototipo GLB propio</title>
+
+  <!-- Jeeliz FaceFilter — Apache 2.0 (motor de tracking) -->
+  <script src="https://cdn.jsdelivr.net/gh/jeeliz/jeelizFaceFilter@master/dist/jeelizFaceFilter.js"></script>
+
+  <!-- Three.js r112 — versión con la que el helper de Jeeliz está testeado -->
+  <script src="https://cdn.jsdelivr.net/npm/three@0.112.1/build/three.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/three@0.112.1/examples/js/loaders/GLTFLoader.js"></script>
+
+  <!-- Helpers de Jeeliz -->
+  <script src="https://cdn.jsdelivr.net/gh/jeeliz/jeelizFaceFilter@master/helpers/JeelizThreeHelper.js"></script>
+  <script src="https://cdn.jsdelivr.net/gh/jeeliz/jeelizFaceFilter@master/helpers/JeelizResizer.js"></script>
+
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@400;600&family=Jost:wght@300;400;500;600&display=swap" rel="stylesheet">
+
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg:        #0a0a0a;
+      --surface:   #141414;
+      --surface2:  #1e1e1e;
+      --border:    #2a2a2a;
+      --gold:      #c9a84c;
+      --cream:     #f0ebe1;
+      --muted:     #888;
+      --header-h:  64px;
+      --panel-w:   320px;
+    }
+
+    html, body {
+      height: 100%;
+      overflow: hidden;
+      background: var(--bg);
+      color: var(--cream);
+      font-family: 'Jost', sans-serif;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    .app {
+      display: grid;
+      grid-template-rows: var(--header-h) 1fr;
+      grid-template-columns: 1fr var(--panel-w);
+      grid-template-areas: "header header" "camera panel";
+      height: 100dvh;
+    }
+
+    /* ── Header ───────────────────────────────────────────── */
+    .header {
+      grid-area: header;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 24px;
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+    }
+
+    .logo-text {
+      font-family: 'Cormorant Garamond', serif;
+      font-size: 24px;
+      font-weight: 600;
+      letter-spacing: 0.04em;
+    }
+
+    .logo-text span { color: var(--gold); }
+
+    .logo-tag {
+      font-size: 10px;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      color: var(--muted);
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      padding: 3px 7px;
+      margin-left: 10px;
+      vertical-align: 4px;
+    }
+
+    .status {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 12px;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: var(--muted);
+    }
+
+    .status .dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: #555;
+      transition: background 0.4s;
+    }
+
+    .status.tracking .dot {
+      background: #4ade80;
+      box-shadow: 0 0 0 3px rgba(74,222,128,0.2);
+    }
+
+    /* ── Cámara ───────────────────────────────────────────── */
+    .camera-area {
+      grid-area: camera;
+      position: relative;
+      background: #050505;
+      overflow: hidden;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    #jeeFaceFilterCanvas {
+      max-width: 100%;
+      max-height: 100%;
+    }
+
+    .start-screen {
+      position: absolute;
+      inset: 0;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 18px;
+      z-index: 5;
+      background: radial-gradient(ellipse at center, #1a1a1a 0%, #0a0a0a 70%);
+      transition: opacity 0.5s;
+      text-align: center;
+      padding: 24px;
+    }
+
+    .start-screen.hidden { opacity: 0; pointer-events: none; }
+
+    .start-title {
+      font-family: 'Cormorant Garamond', serif;
+      font-size: 28px;
+      font-weight: 600;
+    }
+
+    .start-sub {
+      font-size: 14px;
+      color: var(--muted);
+      max-width: 320px;
+      line-height: 1.6;
+    }
+
+    .btn-start {
+      padding: 14px 36px;
+      background: linear-gradient(135deg, var(--gold) 0%, #a8862e 100%);
+      border: none;
+      border-radius: 8px;
+      color: #0a0a0a;
+      font-family: 'Jost', sans-serif;
+      font-size: 15px;
+      font-weight: 600;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      cursor: pointer;
+      transition: transform 0.15s, box-shadow 0.15s;
+    }
+
+    .btn-start:hover { transform: translateY(-1px); box-shadow: 0 8px 24px rgba(201,168,76,0.3); }
+
+    /* ── Panel ────────────────────────────────────────────── */
+    .panel {
+      grid-area: panel;
+      background: var(--surface);
+      border-left: 1px solid var(--border);
+      overflow-y: auto;
+      padding: 18px;
+      display: flex;
+      flex-direction: column;
+      gap: 20px;
+    }
+
+    .panel::-webkit-scrollbar { width: 4px; }
+    .panel::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+
+    .section-title {
+      font-size: 11px;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      color: var(--muted);
+      margin-bottom: 10px;
+    }
+
+    .model-btn {
+      width: 100%;
+      text-align: left;
+      background: var(--surface2);
+      border: 1.5px solid var(--border);
+      border-radius: 8px;
+      padding: 11px 13px;
+      color: var(--cream);
+      font-family: 'Jost', sans-serif;
+      font-size: 13px;
+      cursor: pointer;
+      margin-bottom: 8px;
+      transition: border-color 0.2s, background 0.2s;
+    }
+
+    .model-btn:hover { border-color: #3a3a3a; background: #232323; }
+    .model-btn.active { border-color: var(--gold); background: rgba(201,168,76,0.07); }
+
+    .model-btn small {
+      display: block;
+      color: var(--muted);
+      font-size: 11px;
+      margin-top: 2px;
+    }
+
+    .file-label {
+      display: block;
+      border: 1.5px dashed var(--border);
+      border-radius: 8px;
+      padding: 14px;
+      text-align: center;
+      font-size: 13px;
+      color: var(--muted);
+      cursor: pointer;
+      transition: border-color 0.2s, color 0.2s;
+    }
+
+    .file-label:hover { border-color: var(--gold); color: var(--cream); }
+    .file-label input { display: none; }
+
+    /* Sliders */
+    .ctrl { margin-bottom: 14px; }
+
+    .ctrl-head {
+      display: flex;
+      justify-content: space-between;
+      font-size: 12px;
+      margin-bottom: 6px;
+    }
+
+    .ctrl-head .val { color: var(--gold); font-variant-numeric: tabular-nums; }
+
+    input[type=range] {
+      width: 100%;
+      height: 3px;
+      -webkit-appearance: none;
+      appearance: none;
+      background: var(--border);
+      border-radius: 2px;
+      outline: none;
+    }
+
+    input[type=range]::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      width: 14px;
+      height: 14px;
+      border-radius: 50%;
+      background: var(--gold);
+      cursor: pointer;
+    }
+
+    input[type=range]::-moz-range-thumb {
+      width: 14px;
+      height: 14px;
+      border: none;
+      border-radius: 50%;
+      background: var(--gold);
+      cursor: pointer;
+    }
+
+    .row { display: flex; gap: 8px; }
+
+    .btn-sm {
+      flex: 1;
+      padding: 9px;
+      background: transparent;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      color: var(--cream);
+      font-family: 'Jost', sans-serif;
+      font-size: 12px;
+      cursor: pointer;
+      transition: border-color 0.2s;
+    }
+
+    .btn-sm:hover { border-color: var(--gold); }
+
+    .check {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 13px;
+      cursor: pointer;
+      color: var(--muted);
+    }
+
+    .check input { accent-color: var(--gold); }
+
+    .log {
+      font-family: ui-monospace, monospace;
+      font-size: 10.5px;
+      line-height: 1.5;
+      color: var(--muted);
+      background: #0d0d0d;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 9px;
+      max-height: 130px;
+      overflow-y: auto;
+      white-space: pre-wrap;
+      word-break: break-word;
+    }
+
+    .note {
+      font-size: 11px;
+      color: var(--muted);
+      line-height: 1.5;
+    }
+
+    @media (max-width: 860px) {
+      :root { --panel-w: 0px; }
+      .app {
+        grid-template-rows: var(--header-h) 1fr 45dvh;
+        grid-template-columns: 1fr;
+        grid-template-areas: "header" "camera" "panel";
+      }
+      .panel { border-left: none; border-top: 1px solid var(--border); }
+    }
+  </style>
+</head>
+<body>
+
+<div class="app">
+
+  <header class="header">
+    <div>
+      <span class="logo-text">Proba<span>Lentes</span></span>
+      <span class="logo-tag">v2 · GLB propio</span>
+    </div>
+    <div class="status" id="status">
+      <div class="dot"></div>
+      <span id="statusLabel">Inactivo</span>
+    </div>
+  </header>
+
+  <main class="camera-area">
+    <canvas id="jeeFaceFilterCanvas"></canvas>
+
+    <div class="start-screen" id="startScreen">
+      <h2 class="start-title">Prototipo de prueba</h2>
+      <p class="start-sub">
+        Valida si el tracking de Jeeliz FaceFilter sostiene modelos GLB/GLTF propios,
+        sin depender de la base GlassesDB.
+      </p>
+      <button class="btn-start" id="btnStart">Activar Cámara</button>
+    </div>
+  </main>
+
+  <aside class="panel">
+
+    <div>
+      <div class="section-title">Modelo 3D</div>
+      <button class="model-btn" data-model="0">
+        Anteojos genéricos
+        <small>GLTF remoto · solo para test</small>
+      </button>
+      <button class="model-btn" data-model="1">
+        Anteojos negros
+        <small>GLTF remoto con texturas PBR · solo para test</small>
+      </button>
+      <label class="file-label">
+        Cargar un .glb / .gltf propio
+        <input type="file" id="fileInput" accept=".glb,.gltf">
+      </label>
+    </div>
+
+    <div>
+      <div class="section-title">Calce</div>
+
+      <div class="ctrl">
+        <div class="ctrl-head"><span>Escala</span><span class="val" id="vScale">1.00</span></div>
+        <input type="range" id="sScale" min="0.3" max="2.5" step="0.01" value="1">
+      </div>
+
+      <div class="ctrl">
+        <div class="ctrl-head"><span>Altura (Y)</span><span class="val" id="vY">0.060</span></div>
+        <input type="range" id="sY" min="-0.30" max="0.30" step="0.005" value="0.06">
+      </div>
+
+      <div class="ctrl">
+        <div class="ctrl-head"><span>Profundidad (Z)</span><span class="val" id="vZ">0.350</span></div>
+        <input type="range" id="sZ" min="-0.30" max="0.90" step="0.005" value="0.35">
+      </div>
+
+      <div class="ctrl">
+        <div class="ctrl-head"><span>Inclinación (rot X)</span><span class="val" id="vRX">0°</span></div>
+        <input type="range" id="sRX" min="-45" max="45" step="1" value="0">
+      </div>
+
+      <div class="ctrl">
+        <div class="ctrl-head"><span>Giro (rot Y)</span><span class="val" id="vRY">0°</span></div>
+        <input type="range" id="sRY" min="-180" max="180" step="5" value="0">
+      </div>
+
+      <div class="row">
+        <button class="btn-sm" id="btnReset">Reset</button>
+        <button class="btn-sm" id="btnDump">Copiar valores</button>
+      </div>
+    </div>
+
+    <div>
+      <div class="section-title">Opciones</div>
+      <label class="check">
+        <input type="checkbox" id="chkOccluder" checked>
+        Oclusión de cabeza (varillas detrás)
+      </label>
+    </div>
+
+    <div>
+      <div class="section-title">Consola</div>
+      <div class="log" id="log">Esperando inicio…</div>
+    </div>
+
+    <p class="note">
+      Motor: <b>Jeeliz FaceFilter</b> (Apache 2.0) + Three.js r112.
+      Los dos modelos remotos son solo para validar el pipeline — no usarlos en producción
+      sin verificar su licencia.
+    </p>
+
+  </aside>
+
+</div>
+
+<script>
+  // ── Modelos de prueba ──────────────────────────────────────
+  // Se sirven vía jsDelivr desde un repo público. Sirven para validar
+  // que el pipeline carga GLTF externos; no son modelos del cliente.
+  const CDN = 'https://cdn.jsdelivr.net/gh/breathingcyborg/mediapipe-face-effects@main/src/3d/';
+  const MODELS = [
+    { name: 'Anteojos genéricos', url: CDN + 'glasses/scene.gltf' },
+    { name: 'Anteojos negros',    url: CDN + 'black-glasses/scene.gltf' },
+  ];
+
+  const OCCLUDER_URL = 'https://cdn.jsdelivr.net/gh/jeeliz/jeelizFaceFilter@master/demos/threejs/glassesVTO/models3D/face.json';
+
+  const DEFAULTS = { scale: 1, y: 0.06, z: 0.35, rx: 0, ry: 0 };
+
+  // ── Estado ─────────────────────────────────────────────────
+  let THREECAMERA   = null;
+  let threeStuffs   = null;   // { scene, renderer, faceObject, ... }
+  let glassesPivot  = null;   // contenedor: recibe posición/rotación de los sliders
+  let glassesModel  = null;   // el GLTF cargado, ya centrado y normalizado
+  let occluderMesh  = null;
+  let baseScale     = 1;      // factor que normaliza el ancho del modelo a 1 unidad
+  let fit           = Object.assign({}, DEFAULTS);
+  let currentBtn    = null;
+  let isStarting    = false;  // evita doble init (da ALREADY_INITIALIZED)
+
+  // ── Log en pantalla ────────────────────────────────────────
+  function log(msg) {
+    const el = document.getElementById('log');
+    el.textContent += '\n' + msg;
+    el.scrollTop = el.scrollHeight;
+    console.log('[ProbaLentes v2]', msg);
+  }
+
+  function setStatus(tracking, label) {
+    const el = document.getElementById('status');
+    el.classList.toggle('tracking', tracking);
+    document.getElementById('statusLabel').textContent = label;
+  }
+
+  // Deja todo en un estado desde el que se puede reintentar:
+  // sin destroy(), un segundo init() devuelve ALREADY_INITIALIZED.
+  function fail(label) {
+    setStatus(false, label);
+    try { JEELIZFACEFILTER.destroy(); } catch (e) { /* aún no inicializado */ }
+    document.getElementById('startScreen').classList.remove('hidden');
+    isStarting = false;
+  }
+
+  // ── Arranque de FaceFilter ─────────────────────────────────
+  function start() {
+    if (isStarting) return;
+    isStarting = true;
+    document.getElementById('startScreen').classList.add('hidden');
+    setStatus(false, 'Iniciando…');
+    log('Redimensionando canvas…');
+
+    JeelizResizer.size_canvas({
+      canvasId: 'jeeFaceFilterCanvas',
+      callback: function(isError, bestVideoSettings) {
+        if (isError) { log('ERROR al dimensionar el canvas'); fail('Error'); return; }
+        initFaceFilter(bestVideoSettings);
+      }
+    });
+  }
+
+  function initFaceFilter(videoSettings) {
+    log('Cargando red neuronal…');
+
+    JEELIZFACEFILTER.init({
+      followZRot: true,
+      canvasId:   'jeeFaceFilterCanvas',
+      NNCPath:    'https://cdn.jsdelivr.net/gh/jeeliz/jeelizFaceFilter@master/neuralNets/',
+      maxFacesDetected: 1,
+      videoSettings: videoSettings,
+
+      callbackReady: function(errCode, spec) {
+        if (errCode) {
+          log('ERROR: ' + errCode);
+          fail('Error');
+          return;
+        }
+        log('FaceFilter listo.');
+        initScene(spec);
+      },
+
+      callbackTrack: function(detectState) {
+        JeelizThreeHelper.render(detectState, THREECAMERA);
+      }
+    });
+  }
+
+  // ── Escena Three.js ────────────────────────────────────────
+  function initScene(spec) {
+    threeStuffs = JeelizThreeHelper.init(spec, function(faceIndex, isDetected) {
+      setStatus(isDetected, isDetected ? 'Cara detectada' : 'Buscando cara…');
+    });
+
+    threeStuffs.renderer.toneMapping    = THREE.ACESFilmicToneMapping;
+    threeStuffs.renderer.outputEncoding = THREE.sRGBEncoding;
+
+    // Luces — los GLTF con materiales PBR se ven negros sin esto
+    threeStuffs.scene.add(new THREE.AmbientLight(0xffffff, 0.9));
+    const dir = new THREE.DirectionalLight(0xffffff, 0.8);
+    dir.position.set(0.5, 1, 1);
+    threeStuffs.scene.add(dir);
+
+    // Pivote: todo lo que ajustan los sliders cuelga de acá
+    glassesPivot = new THREE.Object3D();
+    threeStuffs.faceObject.add(glassesPivot);
+
+    THREECAMERA = JeelizThreeHelper.create_camera();
+
+    setStatus(false, 'Buscando cara…');
+    loadOccluder();
+    loadModel(MODELS[0].url, MODELS[0].name, document.querySelector('.model-btn[data-model="0"]'));
+  }
+
+  // ── Oclusor de cabeza ──────────────────────────────────────
+  function loadOccluder() {
+    try {
+      occluderMesh = JeelizThreeHelper.create_threejsOccluder(OCCLUDER_URL, function() {
+        log('Oclusor cargado.');
+      });
+      // Mismos valores que la demo oficial de Jeeliz
+      occluderMesh.rotation.set(0.3, 0, 0);
+      occluderMesh.position.set(0, 0.10, -0.04);
+      occluderMesh.scale.multiplyScalar(0.0084);
+      occluderMesh.visible = document.getElementById('chkOccluder').checked;
+      threeStuffs.faceObject.add(occluderMesh);
+    } catch (e) {
+      log('Oclusor no disponible: ' + e.message);
+    }
+  }
+
+  // ── Carga de modelos ───────────────────────────────────────
+  function loadModel(url, name, btn) {
+    log('Cargando "' + name + '"…');
+    if (btn) setActiveBtn(btn);
+
+    new THREE.GLTFLoader().load(url,
+      function(gltf) {
+        if (glassesModel) {
+          glassesPivot.remove(glassesModel);
+          glassesModel = null;
+        }
+
+        const model = gltf.scene;
+
+        // Centrar en el origen y normalizar el ancho a 1 unidad,
+        // así el slider de escala arranca siempre cerca del calce correcto.
+        const box    = new THREE.Box3().setFromObject(model);
+        const size   = box.getSize(new THREE.Vector3());
+        const center = box.getCenter(new THREE.Vector3());
+        model.position.sub(center);
+
+        const width = Math.max(size.x, size.y, size.z);
+        baseScale = width > 0 ? 1 / width : 1;
+
+        const wrapper = new THREE.Object3D();
+        wrapper.add(model);
+        glassesModel = wrapper;
+        glassesPivot.add(wrapper);
+
+        applyFit();
+        log('OK — bbox ' + size.x.toFixed(2) + ' × ' + size.y.toFixed(2) + ' × ' + size.z.toFixed(2) +
+            ' → escala base ' + baseScale.toFixed(4));
+      },
+      undefined,
+      function(err) {
+        log('ERROR cargando el modelo: ' + (err && err.message ? err.message : url));
+      }
+    );
+  }
+
+  function setActiveBtn(btn) {
+    if (currentBtn) currentBtn.classList.remove('active');
+    btn.classList.add('active');
+    currentBtn = btn;
+  }
+
+  // ── Aplicar sliders ────────────────────────────────────────
+  function applyFit() {
+    if (!glassesPivot) return;
+    glassesPivot.position.set(0, fit.y, fit.z);
+    glassesPivot.rotation.set(fit.rx * Math.PI / 180, fit.ry * Math.PI / 180, 0);
+    if (glassesModel) glassesModel.scale.setScalar(baseScale * fit.scale);
+  }
+
+  function bindSlider(id, key, valId, fmt) {
+    const slider = document.getElementById(id);
+    const out    = document.getElementById(valId);
+    slider.addEventListener('input', function() {
+      fit[key] = parseFloat(slider.value);
+      out.textContent = fmt(fit[key]);
+      applyFit();
+    });
+    return slider;
+  }
+
+  const f3  = v => v.toFixed(3);
+  const f2  = v => v.toFixed(2);
+  const deg = v => v.toFixed(0) + '°';
+
+  const sliders = {
+    scale: bindSlider('sScale', 'scale', 'vScale', f2),
+    y:     bindSlider('sY',     'y',     'vY',     f3),
+    z:     bindSlider('sZ',     'z',     'vZ',     f3),
+    rx:    bindSlider('sRX',    'rx',    'vRX',    deg),
+    ry:    bindSlider('sRY',    'ry',    'vRY',    deg),
+  };
+
+  // ── Controles ──────────────────────────────────────────────
+  document.getElementById('btnStart').addEventListener('click', start);
+
+  document.querySelectorAll('.model-btn').forEach(function(btn) {
+    btn.addEventListener('click', function() {
+      const m = MODELS[parseInt(btn.dataset.model, 10)];
+      loadModel(m.url, m.name, btn);
+    });
+  });
+
+  document.getElementById('fileInput').addEventListener('change', function(e) {
+    const file = e.target.files[0];
+    if (!file) return;
+    if (currentBtn) { currentBtn.classList.remove('active'); currentBtn = null; }
+    loadModel(URL.createObjectURL(file), file.name, null);
+  });
+
+  document.getElementById('chkOccluder').addEventListener('change', function(e) {
+    if (occluderMesh) occluderMesh.visible = e.target.checked;
+  });
+
+  document.getElementById('btnReset').addEventListener('click', function() {
+    fit = Object.assign({}, DEFAULTS);
+    sliders.scale.value = fit.scale; document.getElementById('vScale').textContent = f2(fit.scale);
+    sliders.y.value     = fit.y;     document.getElementById('vY').textContent     = f3(fit.y);
+    sliders.z.value     = fit.z;     document.getElementById('vZ').textContent     = f3(fit.z);
+    sliders.rx.value    = fit.rx;    document.getElementById('vRX').textContent    = deg(fit.rx);
+    sliders.ry.value    = fit.ry;    document.getElementById('vRY').textContent    = deg(fit.ry);
+    applyFit();
+  });
+
+  document.getElementById('btnDump').addEventListener('click', function() {
+    const txt = JSON.stringify({
+      scale: +(baseScale * fit.scale).toFixed(5),
+      position: [0, fit.y, fit.z],
+      rotationDeg: [fit.rx, fit.ry, 0]
+    });
+    navigator.clipboard.writeText(txt).then(
+      () => log('Valores copiados: ' + txt),
+      () => log('Valores: ' + txt)
+    );
+  });
+</script>
+</body>
+</html>

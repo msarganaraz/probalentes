@@ -8,6 +8,9 @@
   <!-- Jeeliz VTO Widget — open source Apache 2.0 -->
   <script src="https://cdn.jsdelivr.net/gh/jeeliz/jeelizGlassesVTOWidget@master/dist/JeelizVTOWidget.js"></script>
 
+  <!-- Three.js para modelos 3D personalizados -->
+  <script src="https://cdn.jsdelivr.net/npm/three@0.148.0/build/three.min.js"></script>
+
   <!-- Google Fonts -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -445,6 +448,20 @@
       letter-spacing: 0.06em;
     }
 
+    .card-badge {
+      position: absolute;
+      top: 6px;
+      left: 6px;
+      font-size: 8px;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      color: #9090e8;
+      background: rgba(120, 120, 200, 0.15);
+      border: 1px solid rgba(120, 120, 200, 0.4);
+      border-radius: 4px;
+      padding: 2px 5px;
+    }
+
     .active-dot {
       position: absolute;
       top: 8px;
@@ -684,9 +701,9 @@
 
     <div class="panel-footer">
       <p class="footer-note">
-        Modelos 3D provistos por <a href="https://jeeliz.com" target="_blank">Jeeliz</a> —
+        Modelos RayBan provistos por <a href="https://jeeliz.com" target="_blank">Jeeliz</a> —
         open source Apache 2.0.<br>
-        Próximamente: tus propias monturas.
+        Cat-Eye Violeta: modelo 3D propio generado con Three.js.
       </p>
     </div>
   </aside>
@@ -697,6 +714,14 @@
   // ── Catálogo de anteojos ────────────────────────────────────
   // SKUs de Jeeliz GlassesDB (gratuitos, sin costo de licencia)
   const CATALOG = [
+    {
+      sku:      '__custom_cateye',
+      isCustom: true,
+      name:     'Cat-Eye Violeta',
+      style:    'Cat-Eye',
+      color:    '#7878c8',
+      shape:    'cateye',
+    },
     {
       sku:   'rayban_aviator_or_vertFlash',
       name:  'Aviador Dorado',
@@ -835,6 +860,17 @@
           <rect x="43" y="11" width="28" height="17" rx="2" stroke="${stroke}" stroke-width="1.8" fill="${fill}"/>
           <path d="M37 18 L43 18" stroke="${stroke}" stroke-width="1.8" stroke-linecap="round"/>
         </svg>`,
+
+      cateye: `
+        <svg width="80" height="36" viewBox="0 0 80 36" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <path d="M3 16 L9 15" stroke="${stroke}" stroke-width="1.8" stroke-linecap="round"/>
+          <path d="M71 15 L77 16" stroke="${stroke}" stroke-width="1.8" stroke-linecap="round"/>
+          <path d="M33 21 Q37 19 40 19 Q43 19 47 21" stroke="${stroke}" stroke-width="1.8" stroke-linecap="round" fill="none"/>
+          <path d="M33 21 Q32 16 27 13 Q18 10 11 10 Q8 13 9 20 Q11 26 22 26 Q33 25 33 21 Z"
+                stroke="${stroke}" stroke-width="1.8" fill="${fill}"/>
+          <path d="M47 21 Q48 16 53 13 Q62 10 69 10 Q72 13 71 20 Q69 26 58 26 Q47 25 47 21 Z"
+                stroke="${stroke}" stroke-width="1.8" fill="${fill}"/>
+        </svg>`,
     };
 
     return shapes[shape] || shapes.round;
@@ -849,8 +885,12 @@
       card.className = 'glasses-card';
       card.dataset.sku = g.sku;
       card.style.animationDelay = `${i * 40}ms`;
+      const badge = g.isCustom
+        ? `<div class="card-badge">TU MONTURA</div>`
+        : '';
       card.innerHTML = `
         <div class="active-dot"></div>
+        ${badge}
         <div class="glasses-preview">${getGlassesSVG(g.shape, g.color)}</div>
         <div class="card-name">${g.name}</div>
         <div class="card-style">${g.style}</div>
@@ -864,15 +904,21 @@
   let isReady = false;
   let currentSku = null;
   let currentCard = null;
+  let _jeelizCtx = null;         // Three.js context de Jeeliz
+  let _customGroup = null;       // Grupo Three.js del modelo personalizado
+  let _jeelizGlassesHolder = null; // Objeto padre de los anteojos Jeeliz
 
   // ── Inicializar Jeeliz ─────────────────────────────────────
   function startSimulator() {
     document.getElementById('startScreen').classList.add('hidden');
     document.getElementById('JeelizVTOWidgetLoading').style.display = 'flex';
 
+    // Usar el primer modelo Jeeliz (saltear los custom)
+    const firstJeeliz = CATALOG.find(g => !g.isCustom);
+
     JEELIZVTOWIDGET.start({
       isShadow: true,
-      sku: CATALOG[0].sku,
+      sku: firstJeeliz.sku,
       searchImageMask: 'https://appstatic.jeeliz.com/jeewidget/images/target512.jpg',
       searchImageColor: 0x222222,
 
@@ -880,12 +926,19 @@
         isReady = true;
         console.log('[ProbaLentes] Simulador listo');
 
-        // Mark first card as active
-        const firstCard = document.querySelector('.glasses-card');
-        if (firstCard) setActiveCard(firstCard);
-        currentSku = CATALOG[0].sku;
+        // Guardar contexto Three.js de Jeeliz para inyección de modelos custom
+        if (typeof JEELIZVTOWIDGET.get_threeContext === 'function') {
+          _jeelizCtx = JEELIZVTOWIDGET.get_threeContext();
+          console.log('[ProbaLentes] Three.js context obtenido:', _jeelizCtx);
+        }
 
-        showWearingBadge(CATALOG[0].name);
+        // Marcar el primer modelo Jeeliz como activo (saltear custom)
+        const firstJeeliz = CATALOG.find(g => !g.isCustom);
+        const firstCard = document.querySelector(`.glasses-card[data-sku="${firstJeeliz.sku}"]`);
+        if (firstCard) setActiveCard(firstCard);
+        currentSku = firstJeeliz.sku;
+
+        showWearingBadge(firstJeeliz.name);
         updateLiveBadge(true);
       },
 
@@ -919,19 +972,221 @@
     if (!isReady) return;
     if (glasses.sku === currentSku) return;
 
-    // Visual feedback
     if (currentCard) currentCard.classList.remove('active');
     card.classList.add('loading-model');
 
-    JEELIZVTOWIDGET.load(glasses.sku);
+    if (glasses.isCustom) {
+      // Si ya hay un modelo Jeeliz cargado, usarlo como base para el holder
+      _mountCustomModel(glasses);
+      setTimeout(() => {
+        card.classList.remove('loading-model');
+        setActiveCard(card);
+        currentSku = glasses.sku;
+        showWearingBadge(glasses.name);
+      }, 600);
+    } else {
+      // Quitar modelo custom si hay uno
+      _unmountCustomModel();
+      JEELIZVTOWIDGET.load(glasses.sku);
+      setTimeout(() => {
+        card.classList.remove('loading-model');
+        setActiveCard(card);
+        currentSku = glasses.sku;
+        showWearingBadge(glasses.name);
+      }, 1200);
+    }
+  }
 
-    // Assume load succeeded after brief delay
-    setTimeout(() => {
-      card.classList.remove('loading-model');
-      setActiveCard(card);
-      currentSku = glasses.sku;
-      showWearingBadge(glasses.name);
-    }, 1200);
+  // ── Modelos personalizados — inyección en escena Three.js ──
+  function _findGlassesHolder() {
+    if (!_jeelizCtx?.scene) return null;
+    let holder = null;
+    _jeelizCtx.scene.traverse(function(obj) {
+      if (obj.isMesh && !holder) {
+        // El padre directo del primer mesh es el holder de los anteojos
+        holder = obj.parent;
+      }
+    });
+    return holder;
+  }
+
+  function _mountCustomModel(glasses) {
+    // Si no tenemos contexto de Three.js, nada que hacer
+    if (!_jeelizCtx) {
+      console.warn('[ProbaLentes] No hay contexto Three.js. ¿Cargó Jeeliz correctamente?');
+      return;
+    }
+
+    // Encontrar el holder (padre de los meshes de Jeeliz)
+    const holder = _findGlassesHolder();
+    if (!holder) {
+      // Es posible que aún no se haya cargado el primer modelo —
+      // volvemos a intentar después de que Jeeliz cargue un modelo base
+      console.log('[ProbaLentes] Holder no encontrado, cargando modelo base...');
+      JEELIZVTOWIDGET.load('rayban_erika_marronArgent_marronVioletDegrade');
+      setTimeout(function() {
+        const h2 = _findGlassesHolder();
+        if (h2) _doMountCustomModel(h2);
+        else console.warn('[ProbaLentes] No se pudo encontrar el holder de anteojos.');
+      }, 1800);
+      return;
+    }
+    _doMountCustomModel(holder);
+  }
+
+  function _doMountCustomModel(holder) {
+    _jeelizGlassesHolder = holder;
+
+    // Ocultar los meshes de Jeeliz
+    holder.traverse(function(obj) {
+      if (obj.isMesh) obj.visible = false;
+    });
+
+    // Calcular escala automática comparando con el tamaño del holder Jeeliz
+    let autoScale = 0.12; // valor por defecto (aprox. para escala en metros)
+    try {
+      const box = new THREE.Box3().setFromObject(holder);
+      const sz  = box.getSize(new THREE.Vector3());
+      if (sz.x > 0) {
+        // Mi modelo mide ~1.21 unidades de ancho; escalamos para coincidir
+        autoScale = sz.x / 1.21;
+        console.log('[ProbaLentes] Escala auto:', autoScale, '(holder width:', sz.x, ')');
+      }
+    } catch(e) {
+      console.log('[ProbaLentes] Auto-scale falló, usando 0.12:', e.message);
+    }
+
+    // Construir y agregar el modelo cat-eye
+    _customGroup = _buildCatEyeGroup();
+    _customGroup.scale.setScalar(autoScale);
+    holder.add(_customGroup);
+
+    console.log('[ProbaLentes] Modelo cat-eye inyectado en la escena Jeeliz');
+  }
+
+  function _unmountCustomModel() {
+    if (_customGroup && _jeelizGlassesHolder) {
+      _jeelizGlassesHolder.remove(_customGroup);
+      _customGroup = null;
+      // Restaurar visibilidad de los meshes de Jeeliz
+      _jeelizGlassesHolder.traverse(function(obj) {
+        if (obj.isMesh) obj.visible = true;
+      });
+      _jeelizGlassesHolder = null;
+    }
+  }
+
+  // ── Geometría Cat-Eye en Three.js ──────────────────────────
+  function _buildCatEyeGroup() {
+    const group = new THREE.Group();
+    const IPD   = 0.63; // distancia interpupilar (unidades de modelo)
+
+    // Materiales
+    const frameMat = new THREE.MeshLambertMaterial({
+      color: 0x7878c8,
+      transparent: true,
+      opacity: 0.92,
+      side: THREE.DoubleSide,
+    });
+    const lensMat = new THREE.MeshLambertMaterial({
+      color: 0xccccff,
+      transparent: true,
+      opacity: 0.18,
+      side: THREE.DoubleSide,
+    });
+
+    // Forma cat-eye: rincón EXTERIOR (derecha) es el punto MÁS ALTO
+    function makeLensShape() {
+      const s = new THREE.Shape();
+      s.moveTo(-0.24, -0.16);
+      s.quadraticCurveTo(-0.31,  0.00, -0.29,  0.10);
+      s.quadraticCurveTo(-0.25,  0.15, -0.10,  0.16);  // inner top (bajo)
+      s.quadraticCurveTo( 0.06,  0.17,  0.18,  0.22);
+      s.quadraticCurveTo( 0.27,  0.30,  0.33,  0.28);  // ala cat-eye (pico!)
+      s.quadraticCurveTo( 0.36,  0.10,  0.30, -0.06);
+      s.quadraticCurveTo( 0.23, -0.22,  0.08, -0.26);
+      s.quadraticCurveTo(-0.06, -0.27, -0.18, -0.22);
+      s.quadraticCurveTo(-0.26, -0.17, -0.24, -0.16);
+      const h = new THREE.Path();
+      h.moveTo(-0.17, -0.09);
+      h.quadraticCurveTo(-0.24,  0.01, -0.22,  0.07);
+      h.quadraticCurveTo(-0.18,  0.10, -0.06,  0.10);
+      h.quadraticCurveTo( 0.06,  0.11,  0.15,  0.15);
+      h.quadraticCurveTo( 0.23,  0.21,  0.26,  0.19);
+      h.quadraticCurveTo( 0.28,  0.06,  0.23, -0.05);
+      h.quadraticCurveTo( 0.17, -0.17,  0.03, -0.19);
+      h.quadraticCurveTo(-0.11, -0.18, -0.17, -0.09);
+      s.holes.push(h);
+      return s;
+    }
+
+    const extrudeOpts = {
+      depth: 0.04,
+      bevelEnabled: true,
+      bevelThickness: 0.010,
+      bevelSize: 0.008,
+      bevelSegments: 3,
+    };
+
+    // Lente derecho
+    const rGeo  = new THREE.ExtrudeGeometry(makeLensShape(), extrudeOpts);
+    const rMesh = new THREE.Mesh(rGeo, frameMat);
+    rMesh.position.set(IPD / 2, 0, -extrudeOpts.depth / 2);
+    group.add(rMesh);
+
+    // Lente izquierdo (espejado en X)
+    const lGeo  = new THREE.ExtrudeGeometry(makeLensShape(), extrudeOpts);
+    const lMesh = new THREE.Mesh(lGeo, frameMat);
+    lMesh.scale.x = -1;
+    lMesh.position.set(-IPD / 2, 0, -extrudeOpts.depth / 2);
+    group.add(lMesh);
+
+    // Vidrio transparente — lente derecho
+    function makeLensPlane(side) {
+      const shape = new THREE.Shape();
+      shape.moveTo(-0.16, -0.11);
+      shape.quadraticCurveTo(-0.22, -0.01, -0.20,  0.07);
+      shape.quadraticCurveTo(-0.17,  0.15, -0.06,  0.15);
+      shape.quadraticCurveTo( 0.09,  0.13,  0.17,  0.17);
+      shape.quadraticCurveTo( 0.24,  0.12,  0.24,  0.03);
+      shape.quadraticCurveTo( 0.23, -0.09,  0.15, -0.16);
+      shape.quadraticCurveTo( 0.02, -0.18, -0.16, -0.11);
+      const geo  = new THREE.ShapeGeometry(shape, 16);
+      const mesh = new THREE.Mesh(geo, lensMat);
+      mesh.scale.x = side;
+      mesh.position.set(side * IPD / 2, 0, 0);
+      return mesh;
+    }
+    group.add(makeLensPlane( 1));
+    group.add(makeLensPlane(-1));
+
+    // Puente
+    const bCurve = new THREE.QuadraticBezierCurve3(
+      new THREE.Vector3(-IPD / 2 + 0.22, -0.02,  0.01),
+      new THREE.Vector3(0,                0.06,   0.03),
+      new THREE.Vector3( IPD / 2 - 0.22, -0.02,  0.01)
+    );
+    const bGeo = new THREE.TubeGeometry(bCurve, 20, 0.022, 8, false);
+    group.add(new THREE.Mesh(bGeo, frameMat));
+
+    // Varillas
+    function makeTemple(side) {
+      const sx  = side * (IPD / 2 + 0.29);
+      const pts = [
+        new THREE.Vector3(sx,             0.11,  0.00),
+        new THREE.Vector3(side * 0.50,    0.10, -0.20),
+        new THREE.Vector3(side * 0.58,    0.06, -0.50),
+        new THREE.Vector3(side * 0.60,    0.00, -0.78),
+        new THREE.Vector3(side * 0.60,   -0.07, -0.88),
+      ];
+      const curve = new THREE.CatmullRomCurve3(pts);
+      const geo   = new THREE.TubeGeometry(curve, 28, 0.024, 8, false);
+      return new THREE.Mesh(geo, frameMat);
+    }
+    group.add(makeTemple( 1));
+    group.add(makeTemple(-1));
+
+    return group;
   }
 
   function setActiveCard(card) {

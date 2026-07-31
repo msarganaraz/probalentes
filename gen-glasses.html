@@ -1,0 +1,238 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <title>Generador de anteojos 3D — Cat-Eye Violeta</title>
+  <script type="importmap">
+  {
+    "imports": {
+      "three": "https://cdn.jsdelivr.net/npm/three@0.165.0/build/three.module.js",
+      "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.165.0/examples/jsm/"
+    }
+  }
+  </script>
+  <style>
+    body { margin: 0; background: #1a1a2e; display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh; font-family: sans-serif; color: #fff; }
+    canvas { border: 1px solid #444; border-radius: 8px; }
+    #controls { margin-top: 16px; display: flex; gap: 12px; align-items: center; }
+    button { padding: 12px 28px; background: #7878c8; border: none; border-radius: 8px; color: #fff; font-size: 15px; font-weight: 600; cursor: pointer; }
+    button:hover { background: #9090e0; }
+    p { color: #aaa; font-size: 13px; margin-top: 8px; text-align: center; }
+    .tip { background: rgba(120,120,200,0.15); border: 1px solid #7878c8; border-radius: 8px; padding: 10px 16px; margin-top: 8px; font-size: 12px; color: #c0c0f0; max-width: 540px; }
+  </style>
+</head>
+<body>
+  <canvas id="c" width="700" height="450"></canvas>
+  <div id="controls">
+    <button id="btnDownload">⬇ Descargar GLB</button>
+    <span style="color:#aaa; font-size:13px;">Arrastrá para rotar · Scroll para zoom</span>
+  </div>
+  <div class="tip">
+    Después de descargar: guardá el archivo como <strong>simulador/modelos/cateye_violeta.glb</strong>
+  </div>
+
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls }  from 'three/addons/controls/OrbitControls.js';
+import { GLTFExporter }   from 'three/addons/exporters/GLTFExporter.js';
+
+// ── Setup ─────────────────────────────────────────────────────
+const canvas   = document.getElementById('c');
+const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
+renderer.setPixelRatio(devicePixelRatio);
+renderer.outputColorSpace = THREE.SRGBColorSpace;
+
+const scene  = new THREE.Scene();
+scene.background = new THREE.Color(0x1a1a2e);
+
+const camera = new THREE.PerspectiveCamera(45, 700/450, 0.01, 10);
+camera.position.set(0, 0.05, 1.4);
+
+const controls = new OrbitControls(camera, canvas);
+controls.enableDamping = true;
+controls.target.set(0, 0, 0);
+
+// ── Luces ─────────────────────────────────────────────────────
+scene.add(new THREE.AmbientLight(0xffffff, 1.2));
+const sun = new THREE.DirectionalLight(0xffffff, 2.5);
+sun.position.set(0.5, 1.5, 2);
+scene.add(sun);
+const fill = new THREE.DirectionalLight(0x8888ff, 0.8);
+fill.position.set(-1, -0.5, 1);
+scene.add(fill);
+
+// ── Materiales ────────────────────────────────────────────────
+const frameMat = new THREE.MeshPhysicalMaterial({
+  color: 0x7070c0,
+  roughness: 0.06,
+  metalness: 0.0,
+  transparent: true,
+  opacity: 0.90,
+  clearcoat: 1.0,
+  clearcoatRoughness: 0.05,
+  side: THREE.DoubleSide,
+});
+
+const lensMat = new THREE.MeshPhysicalMaterial({
+  color: 0xccccff,
+  transparent: true,
+  opacity: 0.18,
+  roughness: 0.02,
+  metalness: 0.0,
+  side: THREE.DoubleSide,
+});
+
+// ── Forma Cat-Eye ────────────────────────────────────────────
+// El eje Z apunta hacia la cámara (frente del anteojo)
+// (0,0,0) = punto medio entre los dos ojos (puente de la nariz)
+// Las coordenadas son en metros: IPD ≈ 0.063 m → usamos unidad 1 = ~10 cm
+
+const IPD = 0.63;  // distancia interpupilar en unidades (0.63 = ~63mm)
+
+// Forma cat-eye: el rincón EXTERIOR (derecha) es el punto MÁS ALTO.
+// El rincón interior (izquierda) queda más bajo — eso es el estilo cat-eye.
+function makeLensShape() {
+  const s = new THREE.Shape();
+  s.moveTo(-0.24, -0.16);                           // inner-bottom
+  s.quadraticCurveTo(-0.31,  0.00, -0.29,  0.10);  // inner side sube suave
+  s.quadraticCurveTo(-0.25,  0.15, -0.10,  0.16);  // inner TOP (y=0.16 — más bajo)
+  s.quadraticCurveTo( 0.06,  0.17,  0.18,  0.22);  // centro subiendo
+  s.quadraticCurveTo( 0.27,  0.30,  0.33,  0.28);  // ala cat-eye (PICO y≈0.30!)
+  s.quadraticCurveTo( 0.36,  0.10,  0.30, -0.06);  // outer side baja desde el ala
+  s.quadraticCurveTo( 0.23, -0.22,  0.08, -0.26);  // outer-bottom
+  s.quadraticCurveTo(-0.06, -0.27, -0.18, -0.22);  // fondo
+  s.quadraticCurveTo(-0.26, -0.17, -0.24, -0.16);  // cierra
+
+  // Agujero interior (abertura del lente)
+  const h = new THREE.Path();
+  h.moveTo(-0.17, -0.09);
+  h.quadraticCurveTo(-0.24,  0.01, -0.22,  0.07);
+  h.quadraticCurveTo(-0.18,  0.10, -0.06,  0.10);  // inner hole top (bajo)
+  h.quadraticCurveTo( 0.06,  0.11,  0.15,  0.15);  // sube hacia exterior
+  h.quadraticCurveTo( 0.23,  0.21,  0.26,  0.19);  // hole outer wing
+  h.quadraticCurveTo( 0.28,  0.06,  0.23, -0.05);
+  h.quadraticCurveTo( 0.17, -0.17,  0.03, -0.19);
+  h.quadraticCurveTo(-0.11, -0.18, -0.17, -0.09);
+  s.holes.push(h);
+
+  return s;
+}
+
+// ── Montura (ExtrudeGeometry) ──────────────────────────────────
+const extrudeOpts = {
+  depth: 0.04,
+  bevelEnabled: true,
+  bevelThickness: 0.010,
+  bevelSize: 0.008,
+  bevelSegments: 3,
+};
+
+const glassesGroup = new THREE.Group();
+
+// Lente derecho (offset +IPD/2 en X)
+const rightShape = makeLensShape();
+const rightGeo   = new THREE.ExtrudeGeometry(rightShape, extrudeOpts);
+const rightFrame = new THREE.Mesh(rightGeo, frameMat);
+rightFrame.position.set(IPD / 2, 0, -extrudeOpts.depth / 2);
+glassesGroup.add(rightFrame);
+
+// Lente izquierdo (espejado)
+const leftShape = makeLensShape();
+const leftGeo   = new THREE.ExtrudeGeometry(leftShape, extrudeOpts);
+// Espejar en X usando scale
+const leftFrame = new THREE.Mesh(leftGeo, frameMat);
+leftFrame.scale.x = -1;
+leftFrame.position.set(-IPD / 2, 0, -extrudeOpts.depth / 2);
+glassesGroup.add(leftFrame);
+
+// ── Lentes (vidrio transparente) ──────────────────────────────
+// Usamos un plano simple en el centro de cada montura
+function makeLensPlane(side) {
+  // Forma aproximada del agujero
+  const shape = new THREE.Shape();
+  shape.moveTo(-0.16, -0.11);
+  shape.quadraticCurveTo(-0.22, -0.01, -0.20,  0.07);
+  shape.quadraticCurveTo(-0.17,  0.15, -0.06,  0.15);
+  shape.quadraticCurveTo( 0.09,  0.13,  0.17,  0.17);
+  shape.quadraticCurveTo( 0.24,  0.12,  0.24,  0.03);
+  shape.quadraticCurveTo( 0.23, -0.09,  0.15, -0.16);
+  shape.quadraticCurveTo( 0.02, -0.18, -0.16, -0.11);
+
+  const geo = new THREE.ShapeGeometry(shape, 16);
+  const mesh = new THREE.Mesh(geo, lensMat);
+  mesh.scale.x = side;
+  mesh.position.set(side * IPD / 2, 0, 0);
+  return mesh;
+}
+glassesGroup.add(makeLensPlane( 1));
+glassesGroup.add(makeLensPlane(-1));
+
+// ── Puente (bridge) ───────────────────────────────────────────
+const bridgeCurve = new THREE.QuadraticBezierCurve3(
+  new THREE.Vector3(-IPD/2 + 0.22, -0.02, 0.01),
+  new THREE.Vector3(0, 0.06, 0.03),
+  new THREE.Vector3( IPD/2 - 0.22, -0.02, 0.01)
+);
+const bridgeGeo = new THREE.TubeGeometry(bridgeCurve, 20, 0.022, 8, false);
+glassesGroup.add(new THREE.Mesh(bridgeGeo, frameMat));
+
+// ── Varillas (temples) ────────────────────────────────────────
+function makeTemple(side) {
+  const startX = side * (IPD/2 + 0.29);
+  const pts = [
+    new THREE.Vector3(startX,            0.11,  0.00),
+    new THREE.Vector3(side * 0.50,       0.10, -0.20),
+    new THREE.Vector3(side * 0.58,       0.06, -0.50),
+    new THREE.Vector3(side * 0.60,       0.00, -0.78),
+    new THREE.Vector3(side * 0.60,      -0.07, -0.88),
+  ];
+  const curve = new THREE.CatmullRomCurve3(pts);
+  const geo   = new THREE.TubeGeometry(curve, 28, 0.024, 8, false);
+  return new THREE.Mesh(geo, frameMat);
+}
+glassesGroup.add(makeTemple( 1));
+glassesGroup.add(makeTemple(-1));
+
+// Orientamos el grupo: el anteojo mira hacia +Z (hacia la cámara)
+glassesGroup.rotation.x = 0;
+scene.add(glassesGroup);
+
+// Referencia: línea de la nariz
+const noseLine = new THREE.Line(
+  new THREE.BufferGeometry().setFromPoints([
+    new THREE.Vector3(0, 0.3, 0),
+    new THREE.Vector3(0, -0.3, 0),
+  ]),
+  new THREE.LineBasicMaterial({ color: 0x444466 })
+);
+scene.add(noseLine);
+
+// ── Render loop ───────────────────────────────────────────────
+(function animate() {
+  requestAnimationFrame(animate);
+  controls.update();
+  renderer.render(scene, camera);
+})();
+
+// ── Exportar GLB ──────────────────────────────────────────────
+document.getElementById('btnDownload').addEventListener('click', () => {
+  const exporter = new GLTFExporter();
+  // Exportamos solo el grupo de anteojos (sin la línea de referencia)
+  exporter.parse(
+    glassesGroup,
+    (buffer) => {
+      const blob = new Blob([buffer], { type: 'application/octet-stream' });
+      const url  = URL.createObjectURL(blob);
+      const a    = document.createElement('a');
+      a.href     = url;
+      a.download = 'cateye_violeta.glb';
+      a.click();
+      URL.revokeObjectURL(url);
+    },
+    (err) => console.error('Export error:', err),
+    { binary: true }
+  );
+});
+</script>
+</body>
+</html>
